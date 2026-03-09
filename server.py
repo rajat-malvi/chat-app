@@ -1,67 +1,71 @@
 import socket
-# for handling multiple clients
 import threading
+import time
+
 HOST = '127.0.0.1'
 PORT = 5000
-LISTENER_LIMIT = 3
+LISTENER_LIMIT = 10
 active_clients = []
-
 
 def listen_for_messages(client, username):
     while 1:
-        message = client.recv(2048).decode('utf-8')
-        if message!='':
-            final_msg = username + "# " + message
-            send_messages_to_all(final_msg)
+            message = client.recv(2048).decode('utf-8')
+                        
+            if message.lower() == "/quit":
+                remove_client(client, username)
+                break
             
+            if message != '':
+                final_msg = f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] [{username}] : {message}'
+                send_messages_to_all(final_msg)
 
-# function to sent msg a single client
 def send_message_to_client(client, message):
     client.sendall(message.encode('utf-8'))
 
-# sent msg to all clients that are currently connected to the server
 def send_messages_to_all(message):
-    for user in active_clients:
+    for user in active_clients: 
         send_message_to_client(user[1], message)
 
-
+def remove_client(client, username):
+    for user in active_clients:
+        if user[1] == client:
+            active_clients.remove(user)
+            break
+    
+    send_messages_to_all(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] [SERVER]:{username} has left")
+    client.close()
 
 def client_handler(client):
-    while 1:
+    try:
         username = client.recv(2048).decode('utf-8')
         if username:
             active_clients.append((username, client))
-            break
-        
-            
-    threading.Thread(target=listen_for_messages, args=(client, username)).start()
-
+            send_messages_to_all(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] [SERVER]:{username} has joined")
+            threading.Thread(target=listen_for_messages, args=(client, username)).start()
+    except:
+        client.close()
 
 def main():
-    # cearing socket class object
-    # socket -> module, socket -> class
-    # AF_INET -> IPV4 addr, 
-    # SOCK_STREAM -> TCP, UDP -> SOCK_DGRAM
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-    # bind server with host and port
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    
     try:
-        # bind -> bind the server to the host and port
         server.bind((HOST, PORT))
         print(f"Server started on {HOST}:{PORT}")
     except Exception as e:
-        print(f"Error: {e}")
         return
-
-    # set configurations 
+    
     server.listen(LISTENER_LIMIT)
-
-    # this while loop will keep the server running and accepting clients
+    
     while 1:
-        client, address = server.accept()
-        print(f"Client connected from Host: {address[0]}, Port: {address[1]}")
-        
-        threading.Thread(target=client_handler, args=(client,)).start()
-        
+        try:
+            client, address = server.accept()
+            print(f"Connected: {address[0]}:{address[1]}")
+            threading.Thread(target=client_handler, args=(client,)).start()
+        except Exception as e:
+            break
+    
+    server.close()
+
 if __name__ == "__main__":
     main()
